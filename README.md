@@ -1,43 +1,39 @@
-# Bare-AI: Enterprise Self-Healing Mesh
+# 🦾 Bare-AI: Autonomous Infrastructure Management
+**Version:** 4.5.6-Enterprise (Architect Edition)  
+**Author:** Cian Egan  
+**Date:** 2026-02-01  
 
-**Bare-AI** is a hierarchical multi-agent system designed to autonomously monitor, diagnose, and repair distributed infrastructure. It implements a **Supervisor-Worker** architecture over a Zero-Trust Tailscale mesh, enabling centralized intelligence with decentralized execution.
+Bare-AI is a multi-node, self-healing architecture designed to manage data pipelines and infrastructure integrity across Linux and Windows environments.
 
-## 📂 Repository Structure
+## 🏛️ System Architecture
 
-| File | Version | Role | Description |
-| :--- | :--- | :--- | :--- |
-| **`setup_bare-ai-brain.sh`** | `v003` | **Supervisor** | The Central Brain. Harvests JSON summaries via SSH, aggregates fleet intelligence, and synthesizes global operational strategies. |
-| **`setup_bare-ai-worker.sh`** | `v002` | **Worker** | The Linux Specialist. Runs on RKE, Vault, and Tailscale nodes. Handles local self-healing and generates daily logs. |
-| **`setup_bare-ai-win.ps1`** | `Exp` | **Worker** | *Experimental* PowerShell wrapper for Windows nodes. Adapts self-healing logic for Windows Server environments. |
+The fleet follows a strict role-based hierarchy to ensure safety and scalability:
 
+### 1. The Architect (Dev Console)
+- **Primary Host:** `penguin` (Chromebook/Debian)
+- **Role:** Central Command & Deployment.
+- **Key Tools:**
+    - `bare`: Local Gemini-powered coding assistant with log-forwarding to a daily diary.
+    - `bare-enroll`: The "Deployment Gun" used to push worker logic to remote nodes via SSH/Headscale.
+    - `bare-status`: Local telemetry auditing tool.
 
----
+### 2. The Brain (Coordinator)
+- **Primary Host:** `bare-dc` (User: `bare-ai-brain`)
+- **Role:** Autonomous fleet monitoring and decision-making.
+- **Logic:** Runs high-frequency health checks and executes self-healing protocols.
 
-Security & Requirements
-Tailscale: Must be installed and connected on all nodes.
+### 3. The Workers (Fleet Nodes)
+- **Hosts:** `bare-rke2`, `bare-dc-headscale`, etc.
+- **Role:** Payload execution and telemetry reporting.
+- **Core Tool:** `bare-summarize` (Binary artifact for JSON telemetry harvesting).
 
-SSH Identity: The Brain uses SSH keys for passwordless access. Ensure ssh-copy-id or Tailscale ACLs are configured.
+## 📜 The "Gold Standard" Naming Convention
+To ensure enterprise-grade consistency, the repository follows these naming rules:
+- **The Box (Installers):** Must have the `.sh` extension (e.g., `setup_bare-ai-worker.sh`).
+- **The Product (Tools):** Must have **NO** extension (e.g., `bare-summarize`). This allows the underlying logic to be rewritten (e.g., from Bash to Python) without breaking system calls.
 
-Gemini API: All nodes require a valid GEMINI_API_KEY in their environment variables.
+## 🚀 Quick Start: Enrolling a New Worker
 
----
-
-## 🚀 Quick Start (Linux)
-
-### 1. Deploy the Brain (Supervisor)
-Run this on your secure host machine (Admin workstation or dedicated VM).
-
+From the **Architect Console** (Penguin), run:
 ```bash
-# 1. Download and run the v003 setup
-curl -O [https://raw.githubusercontent.com/Cian-CloudIntCorp/bare-ai-brain/main/setup_bare-ai-brain.sh](https://raw.githubusercontent.com/Cian-CloudIntCorp/bare-ai-brain/main/setup_bare-ai-brain.sh)
-chmod +x setup_bare-ai-brain.sh
-./setup_bare-ai-brain.sh
-
-# 2. Add your workers to the fleet configuration
-nano ~/.bare-ai/brain/fleet.conf
-# Add one Tailscale hostname per line, e.g.:
-# rke-node-01
-# vault-manager
-
-
-
+bare-enroll <user@host_or_headscale_ip>
