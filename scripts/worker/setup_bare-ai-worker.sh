@@ -1,5 +1,4 @@
 # 1. Enter the correct directory
-cd ~/Bare-ai/scripts/worker
 
 # 2. Write the FINAL, FIXED, FULL script
 cat > setup_bare-ai-worker.sh << 'EOF'
