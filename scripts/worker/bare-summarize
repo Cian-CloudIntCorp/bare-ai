@@ -1,0 +1,61 @@
+############################################################
+#    ____ _                  _ _       _        ____       #
+#   / ___| | ___  _    _  ___| (_)_ __ | |_      / ___|___   #
+#  | |   | |/ _ \| | | |/ __| | | '_ \| __|     | |   / _ \  #
+#  | |___| | (_) | |_| | (__| | | | | | |_      | |__| (_) | #
+#   \____|_|\___/ \__,_|\___|_|_|_| |_|\__|      \____\___/  #
+#                                                          #
+#  by the Cloud Integration Corporation                    #
+############################################################
+#!/bin/bash
+# ==============================================================================
+# SCRIPT NAME:    bare-summarize
+# DESCRIPTION:    Bare-AI Telemetry Harvester (Dynamic Agent)
+# AUTHOR:         Cian Egan
+# DATE:           2026-02-01
+# VERSION:        2.1.0-Enterprise (Dynamic Role Detection)
+#
+# PURPOSE:
+#   This is the "Sensory Organ" of the Bare-AI worker node.
+#   It runs locally on the worker, gathers vital telemetry (RKE2 status,
+#   Load, Memory), and formats it into a single-line JSON object.
+#   This JSON is consumed by the central Brain over SSH.
+#
+# CHANGE LOG:
+#   - v2.1.0: [FEAT] Added dynamic RKE2 role detection (Server vs Agent).
+#             [FIX]  Added Agent ID lookup from config.
+#   - v2.0.0: Initial separation from installer script.
+# ==============================================================================
+
+# 1. Dynamic Identity
+HOSTNAME=$(hostname)
+IP=$(hostname -I | awk '{print $1}')
+AGENT_ID=$(grep AGENT_ID ~/.bare-ai/config 2>/dev/null | cut -d= -f2 || echo "unregistered")
+
+# 2. Dynamic Status Check (RKE2 Server OR Agent)
+if systemctl list-units --full -all | grep -q "rke2-server.service"; then
+    RKE2_STATUS=$(systemctl is-active rke2-server)
+    ROLE="server"
+elif systemctl list-units --full -all | grep -q "rke2-agent.service"; then
+    RKE2_STATUS=$(systemctl is-active rke2-agent)
+    ROLE="agent"
+else
+    RKE2_STATUS="inactive"
+    ROLE="unknown"
+fi
+
+# 3. Resource Metrics
+LOAD=$(uptime | awk -F'load average:' '{ print $2 }' | xargs)
+MEM=$(free -m | awk '/Mem:/ { print $3"MB / "$2"MB" }')
+
+# 4. JSON Output (Matches Brain Expectations)
+# Note: We output 'rke2_status' because that is what the Brain greps for.
+echo "{"
+echo "  \"agent_id\": \"$AGENT_ID\","
+echo "  \"hostname\": \"$HOSTNAME\","
+echo "  \"ip\": \"$IP\","
+echo "  \"role\": \"$ROLE\","
+echo "  \"rke2_status\": \"$RKE2_STATUS\","
+echo "  \"load\": \"$LOAD\","
+echo "  \"memory\": \"$MEM\""
+echo "}"
