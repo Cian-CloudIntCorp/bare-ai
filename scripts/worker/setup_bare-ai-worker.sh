@@ -1,7 +1,6 @@
-# 1. Enter the correct directory
+# 1. Go to the correct directory
 
-# 2. Write the FINAL, FIXED, FULL script
-cat > setup_bare-ai-worker.sh << 'EOF'
+# 2. Write the FINAL, AUTONOMOUS script
 #!/usr/bin/env bash
 ############################################################
 #    ____ _                  _ _      _           ____     #
@@ -17,18 +16,16 @@ cat > setup_bare-ai-worker.sh << 'EOF'
 # DESCRIPTION:    bare-ai-worker "Apex" Installer (Level 4 Autonomy)
 # AUTHOR:         Cian Egan
 # DATE:           2026-02-01
-# VERSION:        4.6.0-Enterprise (Path Paradox Solved)
+# VERSION:        4.7.0-Enterprise (Headless Mode Fixed)
 # ==============================================================================
 set -euo pipefail
 
-# Check if running in a container. Warn if not, as per security recommendations.
+# Check if running in a container.
 if [ ! -f "/.dockerenv" ]; then
-    echo -e "\033[1;33mWarning: Running on host system. For enhanced security and enterprise showcases, Bare-ERP recommends running within a containerized environment like Docker.\033[0m"
+    echo -e "\033[1;33mWarning: Running on host system. For enhanced security, Bare-ERP recommends running within Docker.\033[0m"
 fi
 
-# This script sets up the BARE-AI environment.
-
-# Define colors for output
+# Define colors
 GREEN="\033[0;32m"
 YELLOW="\033[1;33m"
 RED="\033[0;31m"
@@ -44,9 +41,7 @@ LOG_DIR="$BARE_AI_DIR/logs"
 DIARY_DIR="$BARE_AI_DIR/diary"
 CONFIG_FILE="$BARE_AI_DIR/config"
 
-# --- FIXED SOURCE_DIR LOGIC (The Path Paradox Fix) ---
-# If the script is run via pipe (curl | bash), BASH_SOURCE might not point to a directory.
-# We default to the current working directory if BASH_SOURCE is invalid.
+# --- FIXED SOURCE_DIR LOGIC (Path Paradox Fix) ---
 if [ -n "${BASH_SOURCE:-}" ] && [ -f "$BASH_SOURCE" ]; then
     SOURCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 else
@@ -55,54 +50,42 @@ fi
 
 # --- Helper Functions ---
 
-# Function to execute commands with user confirmation (Human-in-the-Loop)
+# Function to execute commands AUTONOMOUSLY (No Human-in-the-Loop)
+# FIX: Removed 'read' command which caused silent crashes in headless mode
 execute_command() {
     local cmd="$1"
     local description="$2"
     
-    echo -e "\n${YELLOW}Proposed Action:${NC}"
-    echo -e "  Description: $description"
+    echo -e "\n${YELLOW}Action: $description${NC}"
     echo -e "  Command: $cmd"
     
     mkdir -p "$LOG_DIR"
-    REPLY="y"
-    echo # Move to a new line after user input
     
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        echo -e "${GREEN}Executing: $cmd${NC}"
-        
-        # Execute the command
-        local exit_code=0
-        eval "$cmd" || exit_code=$?
+    # EXECUTION BLOCK (Unconditional)
+    echo -e "${GREEN}Executing...${NC}"
+    
+    local exit_code=0
+    eval "$cmd" || exit_code=$?
 
-        local log_file="$LOG_DIR/$(date +'%Y%m%d_%H%M%S')_$(date +%N | cut -c1-3).log"
-        local status="failed"
-        if [ $exit_code -eq 0 ]; then
-            status="success"
-        fi
-        
-        # Construct JSON log entry
-        local json_log_entry=$(printf '{ "timestamp": "%s", "command": "%s", "description": "%s", "status": "%s", "exit_code": %d }' "$(date +'%Y-%m-%dT%H:%M:%S.%3N%z')" "$(echo "$cmd" | sed 's/"/\\"/g')" "$(echo "$description" | sed 's/"/\\"/g')" "$status" $exit_code)
-        
-        # Write JSON log to file
-        echo "$json_log_entry" > "$log_file"
-        
-        if [ $exit_code -ne 0 ]; then
-            echo -e "${RED}Error executing command: $cmd${NC}"
-            # Depending on context, you might want to exit or return an error code
-        fi
-    else
-        echo -e "${YELLOW}Skipping command: $cmd${NC}"
-        # Log skipped commands as well
-        local log_file="$LOG_DIR/$(date +'%Y%m%d_%H%M%S')_$(date +%N | cut -c1-3).log"
-        local json_log_entry=$(printf '{ "timestamp": "%s", "command": "%s", "description": "%s", "status": "%s", "exit_code": null }' "$(date +'%Y-%m-%dT%H:%M:%S.%3N%z')" "$(echo "$cmd" | sed 's/"/\\"/g')" "$(echo "$description" | sed 's/"/\\"/g')" "skipped")
-        echo "$json_log_entry" > "$log_file"
+    local log_file="$LOG_DIR/$(date +'%Y%m%d_%H%M%S')_$(date +%N | cut -c1-3).log"
+    local status="failed"
+    if [ $exit_code -eq 0 ]; then
+        status="success"
+    fi
+    
+    # JSON Log
+    local json_log_entry=$(printf '{ "timestamp": "%s", "command": "%s", "description": "%s", "status": "%s", "exit_code": %d }' "$(date +'%Y-%m-%dT%H:%M:%S.%3N%z')" "$(echo "$cmd" | sed 's/"/\\"/g')" "$(echo "$description" | sed 's/"/\\"/g')" "$status" $exit_code)
+    echo "$json_log_entry" > "$log_file"
+    
+    if [ $exit_code -ne 0 ]; then
+        echo -e "${RED}Error executing command: $cmd${NC}"
+        # We allow the script to continue or fail based on 'set -e'
+        return $exit_code
     fi
 }
 
 # --- Create Directory Structure ---
 echo -e "${YELLOW}Creating BARE-AI configuration directory: $BARE_AI_DIR...${NC}"
-# Use execute_command for critical directory creation (Added BIN_DIR)
 execute_command "mkdir -p \"$DIARY_DIR\" \"$LOG_DIR\" \"$BIN_DIR\"" "Create BARE-AI diary, logs, and bin directories"
 
 # Check if directories were created successfully
@@ -113,30 +96,21 @@ fi
 echo -e "${GREEN}BARE-AI directories created.${NC}"
 
 # --- ARTIFACT INSTALLATION (ROBUST FALLBACK SYSTEM) ---
-# Fix: Ensure installation works even if source files are missing (Remote Install)
 ARTIFACT_NAME="bare-summarize"
 DEST_BIN="$BIN_DIR/$ARTIFACT_NAME"
 
 echo -e "${YELLOW}Resolving artifact: $ARTIFACT_NAME...${NC}"
 
 if [ -f "$SOURCE_DIR/$ARTIFACT_NAME" ]; then
-    # Scenario A: Local Install (Source directory has the file)
     echo -e "${GREEN}Found local artifact in source directory.${NC}"
     execute_command "cp \"$SOURCE_DIR/$ARTIFACT_NAME\" \"$DEST_BIN\"" "Install local artifact"
 
 elif [ -f "$(pwd)/$ARTIFACT_NAME" ]; then
-    # Scenario B: Current Directory (User is in the folder, but script is sourced)
     echo -e "${GREEN}Found artifact in current working directory.${NC}"
     execute_command "cp \"$(pwd)/$ARTIFACT_NAME\" \"$DEST_BIN\"" "Install cwd artifact"
 
 else
-    # Scenario C: Remote/Staging Fallback (The Enterprise Requirement)
     echo -e "${YELLOW}Artifact not found locally. Initiating Staging Fallback (Stub Generation)...${NC}"
-    
-    # NOTE: In a real Prod environment, you would use curl here:
-    # curl -sL "https://artifacts.bare-erp.com/release/bare-summarize" -o "$DEST_BIN"
-    
-    # For now, we generate a self-sufficient stub so the installer NEVER fails.
     STUB_CONTENT='#!/bin/bash
 echo "{\"timestamp\": \"$(date -u +"%Y-%m-%dT%H:%M:%SZ")\", \"status\": \"healthy\", \"telemetry\": \"stubbed\"}"
 '
@@ -145,7 +119,6 @@ echo "{\"timestamp\": \"$(date -u +"%Y-%m-%dT%H:%M:%SZ")\", \"status\": \"health
 fi
 
 execute_command "chmod +x \"$DEST_BIN\"" "Make bare-summarize executable"
-
 
 # --- Gemini CLI Check and Installation ---
 if ! command -v gemini &> /dev/null; then
@@ -166,28 +139,26 @@ if ! command -v gemini &> /dev/null; then
 fi
 
 # --- AGENT CONFIGURATION ---
-# Generate a unique AGENT_ID for this installation.
 if [ ! -f "$CONFIG_FILE" ]; then
     AGENT_ID=$(cat /proc/sys/kernel/random/uuid)
     execute_command "echo \"AGENT_ID=$AGENT_ID\" >> \"$CONFIG_FILE\"" "Generate and save unique AGENT_ID to config file"
 fi
 
 # --- Create constitution.md ---
-# NOTE: {{DATE}} is a placeholder to be replaced by sed when the 'bare' command is run.
 CONSTITUTION_CONTENT="# MISSION
 You are Bare-AI, an autonomous Linux Agent responsible for \"Self-Healing\" data pipelines.
 Your goal is to fix data errors, convert formats, and verify integrity using standard Linux tools.
 
 # OPERATIONAL RULES
-1. **Tool First, Think Second:** Do not guess file contents. Use \`head\`, \`file\`, or \`grep\` to inspect them first.
-2. **Verification:** Never assume a conversion worked. Always run a check command (e.g., \`jq .\` to verify JSON validity).
-3. **Resource Efficiency:** Do not read files larger than 1MB into your context. Use \`split\`, \`awk\`, or \`sed\`.
+1. **Tool First, Think Second:** Do not guess file contents. Use \'head\', \'file\', or \'grep\' to inspect them first.
+2. **Verification:** Never assume a conversion worked. Always run a check command (e.g., \'jq .\' to verify JSON validity).
+3. **Resource Efficiency:** Do not read files larger than 1MB into your context. Use \'split\', \'awk\', or \'sed\'.
 4. **Self-Correction:** If a command fails, read the error code, formulate a fix, and retry once.
-5. **Updates:** Use \`sudo DEBIAN_FRONTEND=noninteractive\` for updates.
+5. **Updates:** Use \'sudo DEBIAN_FRONTEND=noninteractive\' for updates.
 
 # FORBIDDEN ACTIONS
-- Do not use \`rm\` on files outside the \`/tmp\` directory.
-- Do not Hallucinate library availability. Use \`dpkg -l\` or \`pip list\` to check before importing.
+- Do not use \'rm\' on files outside the \'/tmp\' directory.
+- Do not Hallucinate library availability. Use \'dpkg -l\' or \'pip list\' to check before importing.
 
 # DIARY RULES
 1. Log all learnings, succinct summary of actions, file names to ~/.bare-ai/diary/{{DATE}}.md."
@@ -198,14 +169,14 @@ execute_command "echo -e \"$CONSTITUTION_CONTENT\" > \"$BARE_AI_DIR/constitution
 # --- Create README.md ---
 README_CONTENT=$(cat << 'README_EOF'
 # BARE-AI Setup and Configuration
-This directory (`$BARE_AI_DIR`) stores the persistent configuration and memory for the BARE-AI agent.
+This directory ('$BARE_AI_DIR') stores the persistent configuration and memory for the BARE-AI agent.
 ## Directory Structure
-- **`constitution.md`**: Core identity and rules.
-- **`diary/`**: Daily logs.
-- **`logs/`**: Session transcripts.
+- **'constitution.md'**: Core identity and rules.
+- **'diary/'**: Daily logs.
+- **'logs/'**: Session transcripts.
 ## Gemini CLI and API Key Setup
-1. **Gemini CLI:** `npm install -g @google/gemini-cli`
-2. **API Key:** `export GEMINI_API_KEY="YOUR_KEY"` in `~/.bashrc`.
+1. **Gemini CLI:** 'npm install -g @google/gemini-cli'
+2. **API Key:** 'export GEMINI_API_KEY="YOUR_KEY"' in '~/.bashrc'.
 README_EOF
 )
 
