@@ -20,7 +20,7 @@ CONSTITUTION_SRC="constitution.md"
 echo -e "${GREEN}Installing Bare-AI Brain (v4.5.0)...${NC}"
 mkdir -p "$LOG_DIR" "$BIN_DIR"
 
-# --- 1. PURGE DEBRIS (Self-Cleaning Logic) ---
+# --- 1. PURGE DEBRIS (Fixing the Duplicate Issue) ---
 if [ -f "$WORKSPACE_DIR/brain_constitution.md" ]; then
     echo -e "${YELLOW}Removing legacy file: brain_constitution.md${NC}"
     rm -f "$WORKSPACE_DIR/brain_constitution.md"
