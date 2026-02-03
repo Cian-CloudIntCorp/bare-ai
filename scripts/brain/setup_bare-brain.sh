@@ -3,8 +3,8 @@ set -euo pipefail
 
 # ==============================================================================
 # SCRIPT NAME:    setup_bare-brain.sh
-# VERSION:        4.5.1-Hotfix (Variable Fix)
-# DESCRIPTION:    Installs the Brain and purges legacy configuration drift.
+# VERSION:        5.0.0-Vault-Integrated
+# DESCRIPTION:    Installs Brain v5 with dynamic secret fetching capabilities.
 # ==============================================================================
 
 GREEN="\033[0;32m"
@@ -14,30 +14,33 @@ NC="\033[0m"
 WORKSPACE_DIR="$HOME/.bare-ai"
 BIN_DIR="$WORKSPACE_DIR/bin"
 LOG_DIR="$WORKSPACE_DIR/logs"
+CONFIG_DIR="$WORKSPACE_DIR/config"
 FLEET_FILE="$WORKSPACE_DIR/fleet.conf"
 CONSTITUTION_SRC="constitution.md" 
-# FIX: Added missing variable definition below
 BASHRC_FILE="$HOME/.bashrc"
 
-echo -e "${GREEN}Installing Bare-AI Brain (v4.5.1)...${NC}"
-mkdir -p "$LOG_DIR" "$BIN_DIR"
+echo -e "${GREEN}Installing Bare-AI Brain (v5.0.0)...${NC}"
+mkdir -p "$LOG_DIR" "$BIN_DIR" "$CONFIG_DIR"
+
+# --- 0. DEPENDENCY CHECK ---
+if ! command -v jq &> /dev/null; then
+    echo -e "${YELLOW}Installing jq (required for JSON parsing)...${NC}"
+    # We assume Debian/Ubuntu for the brain node
+    sudo apt-get update -qq && sudo apt-get install -y -qq jq
+fi
 
 # --- 1. PURGE DEBRIS ---
-if [ -f "$WORKSPACE_DIR/brain_constitution.md" ]; then
-    echo -e "${YELLOW}Removing legacy file: brain_constitution.md${NC}"
-    rm -f "$WORKSPACE_DIR/brain_constitution.md"
-fi
+rm -f "$WORKSPACE_DIR/brain_constitution.md"
 
 # --- 2. INSTALL CONSTITUTION ---
 TARGET_CONST="$WORKSPACE_DIR/constitution.md"
 if [ -f "$CONSTITUTION_SRC" ]; then
     cp "$CONSTITUTION_SRC" "$TARGET_CONST"
-    echo -e "${GREEN}Installed Constitution v2.0.${NC}"
 else
     echo -e "${YELLOW}Warning: Source constitution not found. Using default.${NC}"
 fi
 
-# --- 3. COMPILE BRAIN LOGIC ---
+# --- 3. COMPILE BRAIN LOGIC (VAULT EDITION) ---
 BRAIN_SCRIPT="$BIN_DIR/bare-brain"
 
 cat << 'EOF' > "$BRAIN_SCRIPT"
@@ -48,9 +51,43 @@ set -e
 CONSTITUTION="$HOME/.bare-ai/constitution.md"
 FLEET_FILE="$HOME/.bare-ai/fleet.conf"
 LOG_FILE="$HOME/.bare-ai/reflex_history.log"
+CRED_FILE="$HOME/.bare-ai/config/vault.env"
 TARGET_USER="bare-ai"
 
-# Circuit Breaker
+# --- VAULT AUTHENTICATION FUNCTION ---
+fetch_api_key() {
+    # 1. Load Credentials (RoleID / SecretID)
+    if [ ! -f "$CRED_FILE" ]; then
+        echo "❌ Error: Vault credentials not found at $CRED_FILE" >&2
+        return 1
+    fi
+    source "$CRED_FILE"
+
+    # 2. Login to Vault (AppRole) -> Get Token
+    # We use -k (insecure) because of self-signed certs on the Vault IP
+    VAULT_TOKEN=$(curl -s -k --request POST \
+        --data "{\"role_id\":\"$VAULT_ROLE_ID\",\"secret_id\":\"$VAULT_SECRET_ID\"}" \
+        "$VAULT_ADDR/v1/auth/approle/login" | jq -r '.auth.client_token')
+
+    if [[ "$VAULT_TOKEN" == "null" || -z "$VAULT_TOKEN" ]]; then
+        echo "❌ Error: Failed to authenticate with Vault." >&2
+        return 1
+    fi
+
+    # 3. Read the Secret -> Get Key
+    API_KEY=$(curl -s -k \
+        --header "X-Vault-Token: $VAULT_TOKEN" \
+        "$VAULT_ADDR/v1/secret/data/bare-ai/brain" | jq -r '.data.data.key')
+    
+    if [[ "$API_KEY" == "null" || -z "$API_KEY" ]]; then
+        echo "❌ Error: Authenticated, but failed to read secret." >&2
+        return 1
+    fi
+
+    echo "$API_KEY"
+}
+
+# --- CIRCUIT BREAKER ---
 should_block_reflex() {
     local target=$1
     local time_pattern=$(date +%Y-%m-%d\ %H:)
@@ -58,7 +95,12 @@ should_block_reflex() {
     if [[ -n "$recent" ]]; then echo "YES"; else echo "NO"; fi
 }
 
-echo "🧠 Brain v4.5: Scanning Fleet..."
+# --- MAIN EXECUTION ---
+echo "🧠 Brain v5.0 (Vault-Aware): Scanning Fleet..."
+
+# Fetch Key securely into memory (never saved to disk)
+GEMINI_API_KEY=$(fetch_api_key) || { echo "💀 Fatal: Cannot retrieve Neural Engine Key."; exit 1; }
+export GEMINI_API_KEY
 
 while IFS= read -r WORKER_HOST || [[ -n "$WORKER_HOST" ]]; do
     [[ "$WORKER_HOST" =~ ^#.*$ ]] && continue
@@ -72,7 +114,7 @@ while IFS= read -r WORKER_HOST || [[ -n "$WORKER_HOST" ]]; do
 
     # 2. Circuit Breaker
     if [[ $(should_block_reflex "$WORKER_HOST") == "YES" ]]; then
-        echo "⚠️  Circuit Breaker: Skipping (Already fixed this hour)."
+        echo "⚠️  Circuit Breaker: Skipping."
         continue
     fi
 
@@ -81,10 +123,10 @@ while IFS= read -r WORKER_HOST || [[ -n "$WORKER_HOST" ]]; do
     URGENT TASK: Analyze this telemetry.
     DATA: $RAW_DATA"
 
-    # Call Gemini
+    # Call Gemini (Now using the fetched key implicitly via env var)
     RESPONSE=$(gemini -m gemini-2.5-flash-lite "$PROMPT" 2>/dev/null || echo "")
 
-    # Fallback (Spinal Cord)
+    # Fallback Logic
     if [ -z "$RESPONSE" ]; then
         echo "⚠️  Offline Mode: Engaging Spinal Cord."
         if echo "$RAW_DATA" | grep -q '"rke2_status": "inactive"'; then
@@ -99,9 +141,7 @@ while IFS= read -r WORKER_HOST || [[ -n "$WORKER_HOST" ]]; do
     FIX_CMD=$(echo "$RESPONSE" | grep "COMMAND:" | cut -d':' -f2- | xargs)
 
     if [[ "$FIX_CMD" != "NONE" && ! -z "$FIX_CMD" ]]; then
-        echo "⚡ REFLEX TRIGGERED"
-        echo "   Reason: $REASON"
-        echo "   Action: $FIX_CMD"
+        echo "⚡ REFLEX TRIGGERED: $FIX_CMD"
         ssh -t -q $TARGET_USER@$WORKER_HOST "$FIX_CMD"
         echo "[$(date '+%Y-%m-%d %H:%M:%S')] REFLEX | $WORKER_HOST | $REASON | $FIX_CMD" >> "$LOG_FILE"
     else
@@ -111,12 +151,4 @@ done < "$FLEET_FILE"
 EOF
 
 chmod +x "$BRAIN_SCRIPT"
-
-# --- 4. ENV SETUP ---
-if [ ! -f "$FLEET_FILE" ]; then echo "100.64.0.3" > "$FLEET_FILE"; fi
-TEMP_PATH="$WORKSPACE_DIR/path_frag"
-echo 'if [ -d "$HOME/.bare-ai/bin" ] ; then PATH="$HOME/.bare-ai/bin:$PATH"; fi' > "$TEMP_PATH"
-if ! grep -q "BARE-AI PATH" "$BASHRC_FILE"; then cat "$TEMP_PATH" >> "$BASHRC_FILE"; fi
-rm -f "$TEMP_PATH"
-
-echo -e "${GREEN}Brain v4.5.1 Update Complete.${NC}"
+echo -e "${GREEN}Brain v5.0.0 Update Complete.${NC}"
