@@ -34,3 +34,8 @@ The VM template must be prepared to receive commands from the Brain seamlessly v
 
 ## 4. End-State Goal
 When a template is cloned into a live VM, it should boot up silently, connect to the overlay, and wait to be scraped by the centralized `bare-brain` service. It does not think; it only reports and reacts.
+
+### ⚠️ CLARIFICATION: Developer Tools vs. Production Services
+Do not confuse the autonomous `bare-brain` service with the human developer CLI tool (`bare` / `gemini-cli`). 
+* **FORBIDDEN:** The autonomous `bare-brain` loop script MUST NOT run on worker nodes. 
+* **PERMITTED:** The `bare` (Gemini) interactive command-line interface IS PERMITTED on worker nodes for human administrative and debugging purposes.
