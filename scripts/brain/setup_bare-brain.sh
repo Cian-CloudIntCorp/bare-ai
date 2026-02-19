@@ -3,7 +3,7 @@ set -euo pipefail
 
 # ==============================================================================
 # SCRIPT NAME:    setup_bare-brain.sh
-# VERSION:        5.0.0-Vault-Integrated
+# VERSION:        5.0.1-Vault-Integrated (Patched)
 # DESCRIPTION:    Installs Brain v5 with dynamic secret fetching capabilities.
 # ==============================================================================
 
@@ -19,14 +19,19 @@ FLEET_FILE="$WORKSPACE_DIR/fleet.conf"
 CONSTITUTION_SRC="constitution.md" 
 BASHRC_FILE="$HOME/.bashrc"
 
-echo -e "${GREEN}Installing Bare-AI Brain (v5.0.0)...${NC}"
+echo -e "${GREEN}Installing Bare-AI Brain (v5.0.1)...${NC}"
 mkdir -p "$LOG_DIR" "$BIN_DIR" "$CONFIG_DIR"
 
 # --- 0. DEPENDENCY CHECK ---
 if ! command -v jq &> /dev/null; then
     echo -e "${YELLOW}Installing jq (required for JSON parsing)...${NC}"
-    # We assume Debian/Ubuntu for the brain node
     sudo apt-get update -qq && sudo apt-get install -y -qq jq
+fi
+
+if ! command -v npm &> /dev/null; then
+    echo -e "${YELLOW}Installing npm and Gemini CLI (Brain Engine)...${NC}"
+    sudo apt-get update -qq && sudo apt-get install -y -qq npm
+    sudo npm install -g @google/gemini-cli
 fi
 
 # --- 1. PURGE DEBRIS ---
@@ -43,7 +48,7 @@ fi
 # --- 3. COMPILE BRAIN LOGIC (VAULT EDITION) ---
 BRAIN_SCRIPT="$BIN_DIR/bare-brain"
 
-cat << 'EOF' > "$BRAIN_SCRIPT"
+cat << 'INNER_EOF' > "$BRAIN_SCRIPT"
 #!/bin/bash
 set -e
 
@@ -64,7 +69,6 @@ fetch_api_key() {
     source "$CRED_FILE"
 
     # 2. Login to Vault (AppRole) -> Get Token
-    # We use -k (insecure) because of self-signed certs on the Vault IP
     VAULT_TOKEN=$(curl -s -k --request POST \
         --data "{\"role_id\":\"$VAULT_ROLE_ID\",\"secret_id\":\"$VAULT_SECRET_ID\"}" \
         "$VAULT_ADDR/v1/auth/approle/login" | jq -r '.auth.client_token')
@@ -148,7 +152,7 @@ while IFS= read -r WORKER_HOST || [[ -n "$WORKER_HOST" ]]; do
         echo "🟢 Healthy ($REASON)"
     fi
 done < "$FLEET_FILE"
-EOF
+INNER_EOF
 
 chmod +x "$BRAIN_SCRIPT"
-echo -e "${GREEN}Brain v5.0.0 Update Complete.${NC}"
+echo -e "${GREEN}Brain v5.0.1 Update Complete.${NC}"
