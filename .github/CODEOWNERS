@@ -1,0 +1,12 @@
+# 🛡️ PROJECT BARE: Code Ownership & Blast Radius Control
+# This file enforces that only authorized architects can modify the Control Plane.
+
+# Default rule: The repository owner reviews everything
+* @Cian-CloudIntCorp
+
+# Level 0 Critical Paths (The Brain & Sovereign Logic)
+# Any pull requests modifying these files require explicit approval.
+/scripts/brain/     @Cian-CloudIntCorp
+/constitution.md    @Cian-CloudIntCorp
+/fleet.conf         @Cian-CloudIntCorp
+/ARCHITECTURE.md    @Cian-CloudIntCorp
